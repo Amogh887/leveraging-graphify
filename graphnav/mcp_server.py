@@ -13,6 +13,7 @@ from graphnav.multirepo import (
     build_context_pack_inline,
     maybe_auto_rebuild,
 )
+from graphnav.pathsafe import safe_join
 
 MAX_REGION_LINES = 200
 
@@ -23,11 +24,10 @@ _NO_GRAPH = (
 
 
 def _safe_path(root: str, rel: str) -> str:
-    root_real = os.path.realpath(root)
-    target = os.path.realpath(os.path.join(root_real, rel))
-    if target != root_real and not target.startswith(root_real + os.sep):
+    t = safe_join(root, rel)
+    if t is None:
         raise ValueError("path escapes repo root")
-    return target
+    return t
 
 
 class GraphTools:

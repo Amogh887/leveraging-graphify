@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import pickle
 import re
 import subprocess
 from dataclasses import dataclass
@@ -11,7 +10,6 @@ from graphnav import GraphNotFoundError
 from graphnav.graph_nav import GraphNav
 from graphnav.graph_query import GraphIndex, merge_relation_weights
 
-CACHE_VERSION = 1
 RECENCY_COMMITS = 50
 RECENCY_DECAY = 0.9
 
@@ -46,60 +44,12 @@ def graph_stamp(graph_path: str) -> tuple[int, int] | None:
     return (st.st_mtime_ns, st.st_size)
 
 
-def cache_path_for(graph_path: str) -> str:
-    return os.path.join(os.path.dirname(graph_path), ".graphnav-cache.pkl")
-
-
 def clear_memo() -> None:
     _MEMO.clear()
 
 
 def _cache_disabled() -> bool:
     return os.environ.get("GRAPHNAV_NO_CACHE") == "1"
-
-
-def _read_disk_cache(
-    graph_path: str,
-    stamp: tuple[int, int],
-    skip_key: tuple[str, ...],
-    relation_key: tuple[tuple[str, float], ...],
-) -> GraphBundle | None:
-    path = cache_path_for(graph_path)
-    if not os.path.exists(path):
-        return None
-    try:
-        with open(path, "rb") as f:
-            envelope = pickle.load(f)
-        if envelope.get("version") != CACHE_VERSION:
-            raise ValueError("cache version mismatch")
-        bundle = envelope["bundle"]
-        if (
-            bundle.stamp == stamp
-            and bundle.skip_key == skip_key
-            and bundle.relation_key == relation_key
-        ):
-            return bundle
-        return None
-    except Exception:
-        try:
-            os.remove(path)
-        except OSError:
-            pass
-        return None
-
-
-def _write_disk_cache(graph_path: str, bundle: GraphBundle) -> None:
-    path = cache_path_for(graph_path)
-    tmp = path + ".tmp"
-    try:
-        with open(tmp, "wb") as f:
-            pickle.dump({"version": CACHE_VERSION, "bundle": bundle}, f)
-        os.replace(tmp, path)
-    except OSError:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
 
 
 def _git_recency(repo_root: str) -> dict[str, float]:
@@ -187,6 +137,13 @@ def load_bundle(
     relation_key = tuple(sorted(merge_relation_weights(relation_weights).items()))
     root = repo_root or os.path.dirname(os.path.dirname(abs_graph))
 
+    if _cache_disabled():
+        bundle = _build_bundle(
+            abs_graph, skip, relation_weights, stamp, skip_key, relation_key
+        )
+        _refresh_recency(bundle, root)
+        return bundle
+
     bundle = _MEMO.get(abs_graph)
     if (
         bundle is None
@@ -194,20 +151,12 @@ def load_bundle(
         or bundle.skip_key != skip_key
         or bundle.relation_key != relation_key
     ):
-        bundle = None if _cache_disabled() else _read_disk_cache(
-            abs_graph, stamp, skip_key, relation_key
+        bundle = _build_bundle(
+            abs_graph, skip, relation_weights, stamp, skip_key, relation_key
         )
-        if bundle is None:
-            bundle = _build_bundle(
-                abs_graph, skip, relation_weights, stamp, skip_key, relation_key
-            )
-            _refresh_recency(bundle, root)
-            if not _cache_disabled():
-                _write_disk_cache(abs_graph, bundle)
-            _MEMO[abs_graph] = bundle
-            return bundle
+        _refresh_recency(bundle, root)
         _MEMO[abs_graph] = bundle
+        return bundle
 
-    if _refresh_recency(bundle, root) and not _cache_disabled():
-        _write_disk_cache(abs_graph, bundle)
+    _refresh_recency(bundle, root)
     return bundle

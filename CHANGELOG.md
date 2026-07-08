@@ -4,6 +4,12 @@ All notable changes to GraphNav are documented here. Versions follow [Semantic V
 
 ---
 
+## [2.0.3] — 2026-07-09
+
+### Security
+- **Removed the pickle-based on-disk graph cache, which could execute arbitrary code.** Queries deserialized `graphify-out/.graphnav-cache.pkl` with `pickle.load`, and the version/stamp guards only ran *after* deserialization — so a poisoned cache file dropped into `graphify-out/` executed code the instant any query ran. Graph indexes are now cached only in-process; there is no on-disk cache, and a cold query rebuilds the index in ~150ms.
+- **Context-pack and codex-prompt file reads are now contained to the repository root.** `graphnav context` and the codex prompt builder joined graph `source_file` values onto the repo root and read them without containment, so a crafted or shared `graph.json` with a `../secret.py` or absolute `source_file` could read files outside the repository and embed them in the LLM context. All file reads now resolve through a shared containment check (the same guard the MCP `read_region` tool already used) and paths that escape the repo root are skipped. Legitimate repo-relative paths are unaffected.
+
 ## [2.0.2] — 2026-06-23
 
 ### Fixed

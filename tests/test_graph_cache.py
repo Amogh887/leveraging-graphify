@@ -1,22 +1,18 @@
 from __future__ import annotations
 
 import os
-import pickle
 import subprocess
 
 import pytest
 
 from graphnav import GraphNotFoundError
 from graphnav.graph_cache import (
-    CACHE_VERSION,
-    GraphBundle,
+    _MEMO,
     _git_recency,
-    cache_path_for,
     clear_memo,
     graph_stamp,
     load_bundle,
 )
-from graphnav.graph_query import GraphIndex
 from tests.conftest import write_graph
 
 
@@ -83,22 +79,11 @@ class TestMemoHit:
         assert first is second
 
 
-class TestDiskCacheRoundtrip:
-    def test_second_process_reads_pickle(self, graph_root, no_git, monkeypatch):
+class TestNoDiskCache:
+    def test_no_pkl_file_written(self, graph_root, no_git):
         load_bundle(graph_file(graph_root))
-        assert os.path.exists(cache_path_for(graph_file(graph_root)))
-        clear_memo()
-        calls = {"n": 0}
-        original = GraphIndex.__init__
-
-        def counting(self, *args, **kwargs):
-            calls["n"] += 1
-            original(self, *args, **kwargs)
-
-        monkeypatch.setattr(GraphIndex, "__init__", counting)
-        bundle = load_bundle(graph_file(graph_root))
-        assert calls["n"] == 0
-        assert bundle.nav.find_symbols("incident")
+        cache = graph_root / "graphify-out" / ".graphnav-cache.pkl"
+        assert not cache.exists()
 
 
 class TestInvalidation:
@@ -121,36 +106,25 @@ class TestInvalidation:
         assert second is not first
 
 
-class TestCorruptCache:
-    def test_garbage_cache_rebuilt(self, graph_root, no_git):
-        cache = cache_path_for(graph_file(graph_root))
-        os.makedirs(os.path.dirname(cache), exist_ok=True)
-        with open(cache, "wb") as f:
-            f.write(b"not a pickle")
-        bundle = load_bundle(graph_file(graph_root))
-        assert bundle.nav.find_symbols("incident")
-        with open(cache, "rb") as f:
-            envelope = pickle.load(f)
-        assert envelope["version"] == CACHE_VERSION
-
-    def test_stale_version_rebuilt(self, graph_root, no_git):
-        load_bundle(graph_file(graph_root))
-        cache = cache_path_for(graph_file(graph_root))
-        with open(cache, "rb") as f:
-            envelope = pickle.load(f)
-        envelope["version"] = CACHE_VERSION - 1
-        with open(cache, "wb") as f:
-            pickle.dump(envelope, f)
-        clear_memo()
-        bundle = load_bundle(graph_file(graph_root))
-        assert bundle.nav.find_symbols("incident")
-
-
 class TestNoCacheEnv:
-    def test_no_pickle_written(self, graph_root, no_git, monkeypatch):
+    def test_disabled_builds_fresh_each_call(self, graph_root, no_git, monkeypatch):
+        monkeypatch.setenv("GRAPHNAV_NO_CACHE", "1")
+        first = load_bundle(graph_file(graph_root))
+        second = load_bundle(graph_file(graph_root))
+        assert first is not second
+        assert second.nav.find_symbols("incident")
+
+    def test_disabled_does_not_populate_memo(self, graph_root, no_git, monkeypatch):
         monkeypatch.setenv("GRAPHNAV_NO_CACHE", "1")
         load_bundle(graph_file(graph_root))
-        assert not os.path.exists(cache_path_for(graph_file(graph_root)))
+        assert _MEMO == {}
+
+    def test_disabled_ignores_existing_memo(self, graph_root, no_git, monkeypatch):
+        warm = load_bundle(graph_file(graph_root))
+        assert _MEMO
+        monkeypatch.setenv("GRAPHNAV_NO_CACHE", "1")
+        fresh = load_bundle(graph_file(graph_root))
+        assert fresh is not warm
 
 
 class TestGitRecency:

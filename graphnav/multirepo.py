@@ -18,6 +18,7 @@ from graphnav.config import (
     backend_has_key,
     backend_provider,
 )
+from graphnav.pathsafe import safe_join
 
 
 def find_graphify() -> str | None:
@@ -993,7 +994,8 @@ def build_context_pack_inline(
             m = re.search(r"L(\d+)", loc or "")
             if m:
                 line_nums.append(int(m.group(1)))
-        snippet = _extract_code_windows(os.path.join(root, sf), line_nums)
+        safe = safe_join(root, sf)
+        snippet = _extract_code_windows(safe, line_nums) if safe is not None else ""
         out.append("")
         out.append(f"### {sf}")
         if syms:

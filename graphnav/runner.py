@@ -9,6 +9,7 @@ import threading
 from graphnav import CodexNotFoundError, CodexTimeoutError
 from graphnav.config import Config
 from graphnav.graph_query import RankedFile
+from graphnav.pathsafe import safe_join
 
 
 def _read_file(path: str, max_chars: int) -> str:
@@ -40,12 +41,15 @@ def build_prompt(
             "selected as most relevant to your task. Use them as context when answering.\n"
         )
         for rf in ranked_files:
-            abs_path = os.path.join(project_root, rf.source_file)
+            abs_path = safe_join(project_root, rf.source_file)
             header = f"=== FILE: {rf.source_file}"
             if cfg.context.show_scores:
                 header += f" (score: {rf.score:.2f})"
             header += " ==="
-            content = _read_file(abs_path, cfg.context.max_file_chars)
+            if abs_path is None:
+                content = "[path outside repo root — skipped]"
+            else:
+                content = _read_file(abs_path, cfg.context.max_file_chars)
             parts.append(f"{header}\n---\n{content}\n---\n")
         parts.append("=== END OF CONTEXT ===\n")
 

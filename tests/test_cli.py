@@ -259,7 +259,7 @@ class TestIndexCacheUsed:
         import os
 
         from graphnav.cli import main
-        from graphnav.graph_cache import cache_path_for, clear_memo
+        from graphnav.graph_cache import clear_memo
         from graphnav.graph_query import GraphIndex
         from tests.conftest import write_graph
 
@@ -273,8 +273,7 @@ class TestIndexCacheUsed:
         monkeypatch.setattr(sys, "argv", argv)
         with pytest.raises(SystemExit):
             main()
-        assert os.path.exists(cache_path_for(str(graph_path)))
-        clear_memo()
+        assert not os.path.exists(str(graph_path.parent / ".graphnav-cache.pkl"))
         calls = {"n": 0}
         original = GraphIndex.__init__
 

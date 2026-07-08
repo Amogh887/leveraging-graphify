@@ -197,29 +197,18 @@ class TestDoctorNoServices:
 
 
 class TestDoctorCacheStates:
-    def test_cold_then_warm(self, healthy_repo, fake_graphify, monkeypatch, capsys):
+    def test_index_cache_reports_in_process(self, healthy_repo, fake_graphify, monkeypatch, capsys):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
         run_doctor(str(healthy_repo))
-        assert "cold" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "[ok] index cache" in out
+        assert "index builds in-process" in out
 
-        from graphnav.multirepo import _overarching_graph_path
-
-        clear_memo()
-        load_bundle(_overarching_graph_path(str(healthy_repo)))
-        clear_memo()
-        run_doctor(str(healthy_repo))
-        assert "warm" in capsys.readouterr().out
-
-    def test_garbage_cache_self_heals(self, healthy_repo, fake_graphify, monkeypatch, capsys):
+    def test_index_cache_no_disk_pickle(self, healthy_repo, fake_graphify, monkeypatch, capsys):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
-        from graphnav.graph_cache import cache_path_for
-        from graphnav.multirepo import _overarching_graph_path
-
-        graph_path = _overarching_graph_path(str(healthy_repo))
-        with open(cache_path_for(graph_path), "wb") as f:
-            f.write(b"garbage")
         clear_memo()
         rc = run_doctor(str(healthy_repo))
         out = capsys.readouterr().out
         assert rc == 0
         assert "[fail]" not in out
+        assert not (healthy_repo / "graphify-out" / ".graphnav-cache.pkl").exists()

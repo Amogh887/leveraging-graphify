@@ -12,7 +12,7 @@ from graphnav.config import (
     backend_provider,
     load_config_report,
 )
-from graphnav.graph_cache import cache_path_for, load_bundle
+from graphnav.graph_cache import load_bundle
 from graphnav.multirepo import (
     _graph_meta_path,
     _load_env_file,
@@ -139,16 +139,14 @@ def _check_index_cache(root: str, cfg: Config, graph_readable: bool) -> CheckRes
     if not graph_readable:
         return CheckResult("warn", "index cache", "skipped (no readable graph)")
     graph_path = _overarching_graph_path(root)
-    if not os.path.exists(cache_path_for(graph_path)):
-        return CheckResult("ok", "index cache", "cold — built on first query")
     try:
         load_bundle(
             graph_path, cfg.graph.skip_patterns,
             relation_weights=cfg.query.edge_relation_weights, repo_root=root,
         )
     except Exception:
-        return CheckResult("warn", "index cache", "corrupt — will be rebuilt automatically")
-    return CheckResult("ok", "index cache", "warm")
+        return CheckResult("warn", "index cache", "index build failed — will rebuild on query")
+    return CheckResult("ok", "index cache", "index builds in-process")
 
 
 def run_doctor(root: str, config_path: str | None = None) -> int:
